@@ -1,99 +1,89 @@
 package main
 
-import (
-	"fmt"
-	"io/ioutil"
-	"math/rand"
-	"net/http"
-	"os"
-	"regexp"
-	"strings"
-)
+import (	
+		"fmt"
+		"io/ioutil"
+		"math/rand"
+		"net/http"
+		"os"
+		"regexp"
+		"strings"
+		"log"
+	)
 
 var letters = []rune("abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 func main() {
-	http.Handle("/", http.HandlerFunc(upload))
+	http.HandleFunc("/",handler)
 	http.ListenAndServe(":9090", nil)
 }
 
-func log(w http.ResponseWriter, req *http.Request) {
-	fmt.Println("req .reqURI  ", req.RequestURI)
-	str := strings.Split(req.URL.Path, "/")
-	var fname string
-	var key int
-	str = str[1:]
-	for key = range str {
-		if key == len(str)-1 {
-			break
-		}
+func getFileName(url string) string{
 
-		fname += str[key] + "/"
-	}
-	fname += str[key]
+	str := strings.Split(url, "/")
+    str = str[1:]
+    fname := strings.Join(str ,"/")
 
-	body, err := ioutil.ReadFile(fname)
+	return fname
+}
+
+func sendFile(w http.ResponseWriter, req *http.Request) {
+	
+	fname := getFileName(req.URL.Path)
+	_, err := ioutil.ReadFile(fname)
 	if nil != err {
-		fmt.Println("read in log   file at : ", err)
+		log.Fatal(err)
 		return
 	}
 
-	fmt.Fprintf(w, "%+v\n", string(body))
 }
 
-func upload(w http.ResponseWriter, req *http.Request) {
+func handler(w http.ResponseWriter, req *http.Request) {
 
-	match, _ := regexp.MatchString("\\w{5}/[\\w|\\d]+.\\w+", req.RequestURI)
+	match, _ := regexp.MatchString("\\w+/[\\w|\\d]+.\\w+", req.RequestURI)
 
 	if match {
-		log(w, req)
+		sendFile(w, req)
 		return
 	} else {
-		elsePart(w, req)
+		uploadFile(w, req)
 	}
 }
 
-func elsePart(w http.ResponseWriter, req *http.Request) {
+func sendLink(w http.ResponseWriter, host string,filename string) bool{
+
+	path := "http://"+host+"/"+filename
+	fmt.Fprintf(w,"%+v\n",path)
+	return true
+
+}
+func uploadFile(w http.ResponseWriter, req *http.Request) {
+
 	body, err := ioutil.ReadAll(req.Body)
 	if nil != err {
-		fmt.Println("returning because of read req.Body error : ", err)
-		return
+		log.Fatal(err)	
+ 	return
 	}
 
 	str := strings.Split(req.URL.Path, "/")
 	fname := str[1:]
 
-	file := randString(5)
-	err = os.MkdirAll(file, 0750)
+	dir := randString(5)
+	err = os.MkdirAll(dir, 0750)
 	if nil != err {
-		fmt.Println("returned error in Mkdir : ", err)
+		log.Fatal(err)
 	}
-
-	filename := file + "/" + fname[0]
-	dest, err1 := os.Create(filename)
-	if nil != err1 {
-		fmt.Println("returning because of create1  error : ", err1)
-		return
+	
+	filename := dir + "/" + fname[0]
+	
+	err = ioutil.WriteFile(filename,body,0750)
+	if nil != err {
+		log.Fatal(err)
 	}
+	sendLink(w,req.Host,filename)
 
-	retWrite, err1 := dest.WriteString(string(body))
-	if nil != err1 {
-		fmt.Println("retWrite returns : ", retWrite)
-		fmt.Println("write 2  error because of  : ", err1)
-	}
-
-	dest.Close()
-
-	path := "http://" + req.Host + "/" + filename
-
-	fmt.Fprintf(w, "%+v\n", path)
-	fmt.Fprintf(w, "Data in the File is : \n%+v\n", string(body))
 }
 
-func visit(path string, f os.FileInfo, err error) error {
-	fmt.Printf("Visited: %s\n", path)
-	return nil
-}
 
 func randString(n int) string {
 	b := make([]rune, n)
